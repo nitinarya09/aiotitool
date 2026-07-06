@@ -6177,50 +6177,68 @@ function formatSheet(ws) {
 }
 
 function nte(t,e){
-  const r=ma.book_new();
-  const a=t.map(i=>{
-    const v=extractVoucherDetails(i);
-    return {
-      "Sr No":i.srNo||"",
-      "Account Number":i.accountNo||"",
-      "Party Code":i.partyCode||"",
-      "Party Name":i.partyName||"",
-      "Voucher No.":v.voucherNo,
-      "Major Head":v.majorHead,
-      "Try Code":v.tryCode,
-      "Try Name":v.tryName,
-      "Month":v.month,
-      "Year":v.year,
-      "Raw Voucher Number":v.rawVoucher,
-      "Voucher Date":o8(i.dateOfPayment,"dd/MM/yyyy"),
-      "Amount":i.amountPaid,
-      "Payment Mode":i.paymentMode||"",
-      "Bill Type":i.billType||"",
-      "Bill Ref No":i.billRefNo||"",
-      "UTR No.":i.utrNo||"",
-      "DDO Code":i.ddoDetails?.code||i.ddoCode||"",
-      "DDO Name":i.ddoDetails?.name||i.ddoName||"",
-      "Source File":i.sourceFile||""
-    };
-  });
-  const n=1e6;
-  if(a.length<=n){
-    const i=ma.json_to_sheet(a);
-    formatSheet(i);
-    ma.book_append_sheet(r,i,"Merged_PoL")
-  }else{
-    const i=Math.ceil(a.length/n);
-    for(let s=0;s<i;s++){
-      const o=a.slice(s*n,(s+1)*n),l=ma.json_to_sheet(o);
-      formatSheet(l);
-      ma.book_append_sheet(r,l,`Merged_PoL_Part${s+1}`)
-    }
+  if (!t || t.length === 0) return;
+  
+  if (t.length > 100000) {
+    const proceed = confirm("Warning: Exporting " + t.length.toLocaleString() + " rows to Excel in the browser requires significant memory.\nFor large datasets, CSV export is recommended.\n\nDo you want to proceed with Excel export?");
+    if (!proceed) return;
   }
-  Tv(r,`IFMS_Merged_PoL_${ia(new Date,"yyyyMMdd_HHmmss")}.xlsx`,{compression:!0});
+
+  const r = ma.book_new();
+  const headers = [
+    "Sr No", "Account Number", "Party Code", "Party Name", "Voucher No.",
+    "Major Head", "Try Code", "Try Name", "Month", "Year",
+    "Raw Voucher Number", "Voucher Date", "Amount", "Payment Mode", "Bill Type",
+    "Bill Ref No", "UTR No.", "DDO Code", "DDO Name", "Source File"
+  ];
+  
+  const rows = [headers];
+  for (let i = 0; i < t.length; i++) {
+    const item = t[i];
+    const v = extractVoucherDetails(item);
+    rows.push([
+      item.srNo || "",
+      item.accountNo || "",
+      item.partyCode || "",
+      item.partyName || "",
+      v.voucherNo || "",
+      v.majorHead || "",
+      v.tryCode || "",
+      v.tryName || "",
+      v.month || "",
+      v.year || "",
+      v.rawVoucher || "",
+      item.dateOfPayment ? o8(item.dateOfPayment, "dd/MM/yyyy") : "",
+      item.amountPaid || 0,
+      item.paymentMode || "",
+      item.billType || "",
+      item.billRefNo || "",
+      item.utrNo || "",
+      item.ddoDetails?.code || item.ddoCode || "",
+      item.ddoDetails?.name || item.ddoName || "",
+      item.sourceFile || ""
+    ]);
+  }
+  
+  const ws = ma.aoa_to_sheet(rows);
+  if (t.length <= 50000) {
+    formatSheet(ws);
+  }
+  
+  ma.book_append_sheet(r, ws, "Merged_PoL");
+  const buf = QU(r, { type: "array", bookType: "xlsx" });
+  const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  Xh(blob, "IFMS_Merged_PoL_" + ia(new Date(), "yyyyMMdd_HHmmss") + ".xlsx");
 }
 
 function ote(records) {
   if (!records || records.length === 0) return;
+  
+  if (records.length > 100000) {
+    const proceed = confirm("Warning: Exporting " + records.length.toLocaleString() + " rows to Excel in the browser requires significant memory.\nFor large datasets, CSV export is recommended.\n\nDo you want to proceed with Excel export?");
+    if (!proceed) return;
+  }
+
   const r = ma.book_new();
   const allowances = new Set();
   const deductions = new Set();
@@ -6231,51 +6249,76 @@ function ote(records) {
   const allowKeys = Array.from(allowances).sort();
   const dedKeys = Array.from(deductions).sort();
 
-  const mapped = records.map(row => {
-    const v = extractVoucherDetails(row);
-    const newRow = {
-      "Sr No": row.srNo || "",
-      "Employee Code": row.employeeCode || "",
-      "Employee Name": row.employeeName || "",
-      "Designation": row.designation || "",
-      "GPF/PRAN A/c": row.gpfDpfPranAc || "",
-      "Bank Account No": row.bankAcNo || "",
-      "Days Paid": row.daysPaid || 0,
-      "Basic Pay": row.basicPay || 0,
-      "D.A.": row.da || 0,
-      "Grade Pay": row.gradePayAmount || 0,
-      "Gross Salary": row.grossSalary || 0,
-      "Voucher No.": v.voucherNo,
-      "Raw Voucher Number": v.rawVoucher,
-      "Major Head": v.majorHead,
-      "Try Code": v.tryCode,
-      "Try Name": v.tryName,
-      "Month": v.month,
-      "Year": v.year
-    };
-    allowKeys.forEach(k => {
-      newRow[`Allow: ${k.replace(/_/g, " ").toUpperCase()}`] = row.allowances?.[k] || 0;
-    });
-    newRow["Total Treasury Ded."] = row.totalTreasuryDeduction || 0;
-    newRow["Total A.G. Ded."] = row.totalAgDeduction || 0;
-    newRow["Total Deductions"] = row.totalDeductions || 0;
-    dedKeys.forEach(k => {
-      newRow[`Ded: ${k.replace(/_/g, " ").toUpperCase()}`] = row.deductions?.[k] || 0;
-    });
-    newRow["Net Salary"] = row.netSalary || 0;
-    newRow["Bill Type"] = row.billType || "";
-    newRow["Pay Scale"] = row.payScale || "";
-    newRow["DDO Code"] = row.ddoCode || "";
-    newRow["DDO Name"] = row.ddoName || "";
-    newRow["Bill ID"] = row.billId || "";
-    newRow["Source File"] = row.sourceFile || "";
-    return newRow;
+  const headers = [
+    "Sr No", "Employee Code", "Employee Name", "Designation", "GPF/PRAN A/c",
+    "Bank Account No", "Days Paid", "Basic Pay", "D.A.", "Grade Pay",
+    "Gross Salary", "Voucher No.", "Raw Voucher Number", "Major Head", "Try Code",
+    "Try Name", "Month", "Year"
+  ];
+  allowKeys.forEach(k => {
+    headers.push("Allow: " + k.replace(/_/g, " ").toUpperCase());
   });
+  headers.push("Total Treasury Ded.", "Total A.G. Ded.", "Total Deductions");
+  dedKeys.forEach(k => {
+    headers.push("Ded: " + k.replace(/_/g, " ").toUpperCase());
+  });
+  headers.push("Net Salary", "Bill Type", "Pay Scale", "DDO Code", "DDO Name", "Bill ID", "Source File");
 
-  const ws = ma.json_to_sheet(mapped);
-  formatSheet(ws);
-ma.book_append_sheet(r, ws, "Merged_Payroll");
-  Tv(r, `IFMS_Merged_Payroll_${ia(new Date(), "yyyyMMdd_HHmmss")}.xlsx`, { compression: true });
+  const rows = [headers];
+  for (let i = 0; i < records.length; i++) {
+    const row = records[i];
+    const v = extractVoucherDetails(row);
+    const rowData = [
+      row.srNo || "",
+      row.employeeCode || "",
+      row.employeeName || "",
+      row.designation || "",
+      row.gpfDpfPranAc || "",
+      row.bankAcNo || "",
+      row.daysPaid || 0,
+      row.basicPay || 0,
+      row.da || 0,
+      row.gradePayAmount || 0,
+      row.grossSalary || 0,
+      v.voucherNo || "",
+      v.rawVoucher || "",
+      v.majorHead || "",
+      v.tryCode || "",
+      v.tryName || "",
+      v.month || "",
+      v.year || ""
+    ];
+    allowKeys.forEach(k => {
+      rowData.push(row.allowances?.[k] || 0);
+    });
+    rowData.push(
+      row.totalTreasuryDeduction || 0,
+      row.totalAgDeduction || 0,
+      row.totalDeductions || 0
+    );
+    dedKeys.forEach(k => {
+      rowData.push(row.deductions?.[k] || 0);
+    });
+    rowData.push(
+      row.netSalary || 0,
+      row.billType || "",
+      row.payScale || "",
+      row.ddoCode || "",
+      row.ddoName || "",
+      row.billId || "",
+      row.sourceFile || ""
+    );
+    rows.push(rowData);
+  }
+
+  const ws = ma.aoa_to_sheet(rows);
+  if (records.length <= 50000) {
+    formatSheet(ws);
+  }
+  ma.book_append_sheet(r, ws, "Merged_Payroll");
+  const buf = QU(r, { type: "array", bookType: "xlsx" });
+  const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  Xh(blob, "IFMS_Merged_Payroll_" + ia(new Date(), "yyyyMMdd_HHmmss") + ".xlsx");
 }
 function Xh(t,e){const r=URL.createObjectURL(t),a=document.createElement("a");a.href=r,a.download=e,document.body.appendChild(a),a.click(),document.body.removeChild(a),URL.revokeObjectURL(r)}async function ite(t,e,r=!1,a=!1,n){const i=["Group_No","Sr No","Account Number","Party Code","Beneficiary Name","TRY Code","TRY Name","MHCD","Voucher No","Month","Year","Raw Voucher Number","Voucher Date","Amount","Payment Mode","Bill Type","Bill Ref No","UTR No","DDO Code","DDO Name","Source File","Audit Notes"],s=(d,k)=>{if(d==null)return"";let g=String(d).replace(/[\r\n]+/g," ").replace(/\\r\\n|\\n|\\r/g," ");const lk=k?String(k).toLowerCase():"";if(!a&&lk&&(lk.includes("account")||lk.includes("party code")||lk.includes("party_code")||lk.includes("employee_code")||lk.includes("employee code")||lk.includes("bank_ac_no")||lk.includes("bank a/c")||lk.includes("gpf")||lk.includes("utr")||lk.includes("ddo")||lk.includes("voucher"))&&/^\d+$/.test(g)){return `="${g}"`}return g.includes(",")||g.includes('"')||g.includes("\n")||g.includes("\r")?`"${g.replace(/"/g,'""')}"`:g},o=d=>[d.Group_No||"",d.srNo||"",d.accountNo||"",d.partyCode||"",d.partyName||"",d.voucherDetails?.tryCodeNum||"",d.voucherDetails?.tryCodeChar||"",d.voucherDetails?.majorHead||"",d.voucherDetails?.serialNo?d.voucherDetails.serialNo.replace(/^0+/,"")||"0":d.voucherNo||"",d.paymentMonth||d.voucherDetails?.fyMonth||"",d.paymentYear||d.voucherDetails?.fyYear||"",d.voucherNo||"",o8(d.dateOfPayment,"dd/MM/yyyy"),d.amountPaid,d.paymentMode||"",d.billType||"",d.billRefNo||"",d.utrNo||"",d.ddoDetails?.code||d.ddoCode||"",d.ddoDetails?.name||d.ddoName||"",d.sourceFile||"",d.auditNotes||""],l=`IFMS_Merged_PoL_${ia(new Date,"yyyyMMdd_HHmmss")}`,c=a?"txt":"csv",f=a?"text/plain;charset=utf-8;":"text/csv;charset=utf-8;";if(r){const g=Math.ceil(t.length/5e5),h=new Uv;for(let m=0;m<Math.max(1,g);m++){n&&(n(`Compiling CSV Part ${m+1} of ${g}...`,10+Math.floor(m/g*70)),await new Promise(B=>setTimeout(B,0)));const y=t.slice(m*5e5,(m+1)*5e5),w=[(a?"":"sep=,\n")+i.join(",")+`
 `];y.forEach(B=>{w.push(o(B).map((val,idx)=>s(val,i[idx])).join(",")+`\n`)});h.file(`${l}_Part${m+1}.${c}`,new Blob(a?w:[new Uint8Array([0xEF,0xBB,0xBF]),...w],{type:f}))}n&&(n("Compressing ZIP archive...",85),await new Promise(m=>setTimeout(m,0)));const v=await h.generateAsync({type:"blob"});n&&n("Downloading splits...",95),Xh(v,`${l}_Splits.zip`)}else{const d=[(a?"":"sep=,\n")+i.join(",")+`
